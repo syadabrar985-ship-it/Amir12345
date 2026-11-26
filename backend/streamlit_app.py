@@ -1,114 +1,121 @@
 
-import streamlit as st
+import os
 import sys
+import streamlit as st
 from pathlib import Path
 
-# Add project root to Python path
-BACKEND_DIR = Path(__file__).resolve().parent
-PROJECT_DIR = BACKEND_DIR.parent
-
-sys.path.insert(0, str(BACKEND_DIR))
-
-import os
-
-if "GROQ_API_KEY" in st.secrets:
-    os.environ["GROQ_API_KEY"] = st.secrets["GROQ_API_KEY"]
-
-if "GROQ_MODEL" in st.secrets:
-    os.environ["GROQ_MODEL"] = st.secrets["GROQ_MODEL"]
-
-from app.rag_pipeline import index_pdf, answer_question
-
-
-SOURCE_DIR = BACKEND_DIR / "data" / "source_documents"
-
-SOURCE_DIR.mkdir(parents=True, exist_ok=True)
-
-
-# Page configuration
 st.set_page_config(
     page_title="Amir AI Assistant",
     page_icon="🤖",
     layout="wide"
 )
 
+BACKEND_DIR = Path(__file__).resolve().parent
+PROJECT_DIR = BACKEND_DIR.parent
 
-# Application title
+sys.path.insert(0, str(BACKEND_DIR))
+
+# Load secure Streamlit secrets before importing the RAG pipeline
+try:
+    for key in ["GROQ_API_KEY", "GROQ_MODEL"]:
+        if key in st.secrets:
+            os.environ[key] = str(st.secrets[key])
+except Exception:
+    pass
+
+from app.rag_pipeline import index_pdf, answer_question
+
+SOURCE_DIR = BACKEND_DIR / "data" / "source_documents"
+VECTOR_DB_DIR = BACKEND_DIR / "vector_db"
+
+SOURCE_DIR.mkdir(parents=True, exist_ok=True)
+
+def knowledge_base_ready():
+    return (
+        (VECTOR_DB_DIR / "index.faiss").exists()
+        and (VECTOR_DB_DIR / "chunks.json").exists()
+    )
+
 st.title("🤖 Amir AI Lead Generation Assistant")
-
 st.caption(
-    "An AI assistant powered by RAG, FAISS, "
-    "Sentence Transformers and Groq."
+    "Your document-based AI assistant powered by "
+    "RAG, FAISS, Sentence Transformers and Groq."
 )
 
-
-# Sidebar
 with st.sidebar:
-
     st.header("Knowledge Base")
 
-    st.write("Upload Amir's documents to update the knowledge base.")
+    existing_pdfs = list(SOURCE_DIR.glob("*.pdf"))
+
+    if existing_pdfs:
+        st.write("Existing documents:")
+        for pdf in existing_pdfs:
+            st.write(f"📄 {pdf.name}")
+
+        if st.button("Index Existing Documents", use_container_width=True):
+            try:
+                with st.spinner("Building knowledge base..."):
+                    for pdf in existing_pdfs:
+                        index_pdf(str(pdf))
+
+                st.success("Knowledge base created successfully!")
+                st.rerun()
+
+            except Exception as error:
+                st.error(f"Indexing failed: {error}")
+    else:
+        st.info("No existing PDF documents found.")
+
+    st.divider()
+
+    st.subheader("Upload New PDF")
 
     uploaded_file = st.file_uploader(
-        "Upload PDF",
+        "Choose a PDF document",
         type=["pdf"]
     )
 
-    if uploaded_file:
+    if uploaded_file and st.button(
+        "Upload and Index PDF",
+        use_container_width=True
+    ):
+        pdf_path = SOURCE_DIR / Path(uploaded_file.name).name
 
-        if st.button("Upload and Index PDF"):
+        try:
+            pdf_path.write_bytes(uploaded_file.getvalue())
 
-            pdf_path = SOURCE_DIR / Path(uploaded_file.name).name
+            with st.spinner("Processing your document..."):
+                index_pdf(str(pdf_path))
 
-            try:
-                pdf_path.write_bytes(uploaded_file.getvalue())
+            st.success("Document indexed successfully!")
+            st.rerun()
 
-                with st.spinner("Processing document..."):
-
-                    result = index_pdf(str(pdf_path))
-
-                st.success("Document indexed successfully!")
-
-                st.json(result)
-
-                st.session_state["knowledge_ready"] = True
-
-            except Exception as error:
-
-                st.error(f"Indexing failed: {error}")
+        except Exception as error:
+            st.error(f"Upload failed: {error}")
 
     st.divider()
 
     st.subheader("System Status")
 
-    if st.session_state.get("knowledge_ready", False):
-        st.success("Knowledge base indexed")
+    if knowledge_base_ready():
+        st.success("Knowledge base is ready")
     else:
-        st.info("Upload and index a document to begin")
+        st.warning("Knowledge base is not indexed yet")
 
-
-# Chat interface
 st.subheader("Chat with Amir's AI Assistant")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-
-# Display previous messages
 for message in st.session_state.messages:
-
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-
-# User input
 question = st.chat_input(
-    "Ask something about Amir's lead generation business..."
+    "Ask about Amir's lead generation business..."
 )
 
-
 if question:
-
     st.session_state.messages.append({
         "role": "user",
         "content": question
@@ -118,30 +125,30 @@ if question:
         st.markdown(question)
 
     with st.chat_message("assistant"):
+        if not knowledge_base_ready():
+            answer = (
+                "The knowledge base is not ready yet. "
+                "Please index the existing PDF first."
+            )
+            st.warning(answer)
+        else:
+            with st.spinner("Searching the knowledge base..."):
+                try:
+                    result = answer_question(question)
+                    answer = result["answer"]
 
-        with st.spinner("Searching knowledge base..."):
+                    st.markdown(answer)
 
-            try:
+                    if result.get("sources"):
+                        with st.expander("View Sources"):
+                            for source in result["sources"]:
+                                st.write(f"📄 {source}")
 
-                result = answer_question(question)
+                except Exception as error:
+                    answer = f"Unable to generate an answer: {error}"
+                    st.error(answer)
 
-                answer = result["answer"]
-
-                st.markdown(answer)
-
-                if result.get("sources"):
-
-                    with st.expander("Sources"):
-                        for source in result["sources"]:
-                            st.write(f"📄 {source}")
-
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": answer
-                })
-
-            except Exception as error:
-
-                st.error(
-                    f"Unable to answer your question: {error}"
-                )
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": answer
+        })
