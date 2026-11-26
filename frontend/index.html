@@ -1,1 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Amir | AI Lead Generation Assistant</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <main class="container">
+        <header class="header">
+            <h1>AI Lead Generation Assistant</h1>
+            <p>Ask questions about Amir's services, lead generation process, and outreach SOP.</p>
+        </header>
 
+        <section class="chat-box" id="chatBox">
+            <div class="message assistant">
+                Hello! I can help you understand Amir's lead generation process
+                and prepare outreach content using the available documents.
+            </div>
+        </section>
+
+        <form id="chatForm" class="chat-form">
+            <input
+                type="text"
+                id="questionInput"
+                placeholder="Ask your question..."
+                autocomplete="off"
+                required
+            >
+            <button type="submit" id="sendButton">Send</button>
+        </form>
+
+        <p class="status" id="status"></p>
+    </main>
+
+    <script src="script.js"></script>
+</body>
+</html>
