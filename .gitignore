@@ -1,1 +1,12 @@
+.env
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.DS_Store
 
+backend/vector_db/*
+!backend/vector_db/.gitkeep
+
+backend/data/processed/*
+!backend/data/processed/.gitkeep
