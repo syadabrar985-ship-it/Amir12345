@@ -6,6 +6,3 @@ faiss-cpu
 groq
 python-dotenv
 numpy
-fastapi
-uvicorn
-python-multipart
