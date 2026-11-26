@@ -9,6 +9,14 @@ PROJECT_DIR = BACKEND_DIR.parent
 
 sys.path.insert(0, str(BACKEND_DIR))
 
+import os
+
+if "GROQ_API_KEY" in st.secrets:
+    os.environ["GROQ_API_KEY"] = st.secrets["GROQ_API_KEY"]
+
+if "GROQ_MODEL" in st.secrets:
+    os.environ["GROQ_MODEL"] = st.secrets["GROQ_MODEL"]
+
 from app.rag_pipeline import index_pdf, answer_question
 
 
