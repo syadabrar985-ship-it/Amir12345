@@ -3,23 +3,50 @@ from pathlib import Path
 from pypdf import PdfReader
 
 
-SUPPORTED_EXTENSIONS = {".pdf", ".txt", ".md"}
+def extract_pdf_text(pdf_path: str) -> str:
+    """
+    Extract text from a PDF file page by page.
+    """
+
+    file_path = Path(pdf_path)
+
+    if not file_path.exists():
+        raise FileNotFoundError(f"PDF not found: {file_path}")
+
+    if file_path.suffix.lower() != ".pdf":
+        raise ValueError("The provided file must be a PDF.")
+
+    reader = PdfReader(str(file_path))
+
+    extracted_pages = []
+
+    for page_number, page in enumerate(reader.pages, start=1):
+        page_text = page.extract_text()
+
+        if page_text and page_text.strip():
+            extracted_pages.append(
+                f"\n--- Page {page_number} ---\n{page_text.strip()}"
+            )
+
+    if not extracted_pages:
+        raise ValueError(
+            "No readable text found in the PDF. "
+            "It may require OCR."
+        )
+
+    return "\n".join(extracted_pages)
 
 
-def extract_text(file_path: str) -> str:
-    path = Path(file_path)
-    extension = path.suffix.lower()
+def extract_document(pdf_path: str) -> dict:
+    """
+    Extract text and basic metadata from a PDF.
+    """
 
-    if extension == ".pdf":
-        reader = PdfReader(str(path))
-        pages = []
+    text = extract_pdf_text(pdf_path)
 
-        for page in reader.pages:
-            pages.append(page.extract_text() or "")
-
-        return "\n".join(pages)
-
-    if extension in {".txt", ".md"}:
-        return path.read_text(encoding="utf-8", errors="ignore")
-
-    raise ValueError(f"Unsupported file type: {extension}")
+    return {
+        "file_name": Path(pdf_path).name,
+        "text": text,
+        "character_count": len(text),
+        "word_count": len(text.split())
+    }
