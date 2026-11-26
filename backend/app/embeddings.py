@@ -1,29 +1,44 @@
+
 from sentence_transformers import SentenceTransformer
-from app.config import EMBEDDING_MODEL
 
 
-_model = None
+MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 
 
-def get_model():
-    global _model
+class EmbeddingModel:
 
-    if _model is None:
-        _model = SentenceTransformer(EMBEDDING_MODEL)
+    def __init__(self, model_name: str = MODEL_NAME):
+        self.model = SentenceTransformer(model_name)
 
-    return _model
+    def create_embeddings(self, texts: list) -> list:
+        """
+        Convert text into normalized embeddings.
+        """
 
+        if not texts:
+            raise ValueError("No text provided for embeddings.")
 
-def create_embeddings(texts: list[str]):
-    if not texts:
-        return []
+        embeddings = self.model.encode(
+            texts,
+            convert_to_numpy=True,
+            normalize_embeddings=True,
+            show_progress_bar=False
+        )
 
-    model = get_model()
+        return embeddings.astype("float32")
 
-    embeddings = model.encode(
-        texts,
-        convert_to_numpy=True,
-        normalize_embeddings=True
-    )
+    def create_query_embedding(self, query: str):
+        """
+        Convert a question into an embedding.
+        """
 
-    return embeddings
+        if not query.strip():
+            raise ValueError("Query cannot be empty.")
+
+        embedding = self.model.encode(
+            [query],
+            convert_to_numpy=True,
+            normalize_embeddings=True
+        )
+
+        return embedding.astype("float32")
