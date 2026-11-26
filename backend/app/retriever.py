@@ -1,22 +1,42 @@
-from app.vector_store import search_vectors
+
+from pathlib import Path
+
+from app.embeddings import EmbeddingModel
+from app.vector_store import FAISSVectorStore
 
 
-def retrieve_context(question: str, top_k: int = 4):
-    return search_vectors(question, top_k=top_k)
+VECTOR_DB_PATH = (
+    Path(__file__).resolve().parents[1] / "vector_db"
+)
 
 
-def format_context(results: list[dict]) -> str:
-    if not results:
-        return ""
+class Retriever:
 
-    sections = []
+    def __init__(self, vector_db_path=None):
 
-    for number, item in enumerate(results, start=1):
-        source = item.get("source", "Unknown document")
-        content = item.get("text", "")
-
-        sections.append(
-            f"[Source {number}: {source}]\n{content}"
+        self.vector_db_path = (
+            Path(vector_db_path)
+            if vector_db_path
+            else VECTOR_DB_PATH
         )
 
-    return "\n\n".join(sections)
+        self.embedding_model = EmbeddingModel()
+
+        self.vector_store = FAISSVectorStore()
+        self.vector_store.load(str(self.vector_db_path))
+
+    def retrieve(self, query: str, top_k: int = 4):
+        """
+        Retrieve relevant document chunks.
+        """
+
+        query_embedding = (
+            self.embedding_model.create_query_embedding(query)
+        )
+
+        results = self.vector_store.search(
+            query_embedding,
+            top_k
+        )
+
+        return results
