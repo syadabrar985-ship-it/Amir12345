@@ -1,4 +1,5 @@
 
+streamlit
 pypdf
 sentence-transformers
 faiss-cpu
@@ -8,4 +9,3 @@ numpy
 fastapi
 uvicorn
 python-multipart
-streamlit
