@@ -1,63 +1,145 @@
+
 import json
+from pathlib import Path
+
 import faiss
 import numpy as np
 
-from app.config import FAISS_INDEX_PATH, METADATA_PATH
-from app.embeddings import create_embeddings
 
+class FAISSVectorStore:
 
-def save_vector_store(texts: list[str], metadata: list[dict]):
-    if not texts:
-        raise ValueError("No text chunks were provided.")
+    def __init__(self):
+        self.index = None
+        self.chunks = []
 
-    embeddings = create_embeddings(texts)
-    embeddings = np.asarray(embeddings, dtype="float32")
+    def add_documents(self, chunks: list, embeddings):
+        """
+        Add document embeddings to FAISS.
+        """
 
-    index = faiss.IndexFlatIP(embeddings.shape[1])
-    index.add(embeddings)
+        if not chunks:
+            raise ValueError("No chunks provided.")
 
-    faiss.write_index(index, str(FAISS_INDEX_PATH))
+        embeddings = np.asarray(
+            embeddings, dtype="float32"
+        )
 
-    with open(METADATA_PATH, "w", encoding="utf-8") as file:
-        json.dump(metadata, file, ensure_ascii=False, indent=2)
+        if embeddings.ndim != 2:
+            raise ValueError("Embeddings must be a 2D array.")
 
-    return len(texts)
+        if len(chunks) != len(embeddings):
+            raise ValueError("Chunks and embeddings count mismatch.")
 
+        if not np.isfinite(embeddings).all():
+            raise ValueError("Embeddings contain invalid values.")
 
-def load_vector_store():
-    if not FAISS_INDEX_PATH.exists() or not METADATA_PATH.exists():
-        return None, []
+        if self.index is None:
+            dimension = embeddings.shape[1]
+            self.index = faiss.IndexFlatIP(dimension)
 
-    index = faiss.read_index(str(FAISS_INDEX_PATH))
+        if self.index.d != embeddings.shape[1]:
+            raise ValueError("Embedding dimensions do not match.")
 
-    with open(METADATA_PATH, "r", encoding="utf-8") as file:
-        metadata = json.load(file)
+        self.index.add(embeddings)
+        self.chunks.extend(chunks)
 
-    return index, metadata
+    def search(self, query_embedding, top_k: int = 4) -> list:
+        """
+        Search for the most relevant chunks.
+        """
 
+        if self.index is None or self.index.ntotal == 0:
+            raise ValueError("FAISS index is empty.")
 
-def search_vectors(query: str, top_k: int = 4):
-    index, metadata = load_vector_store()
+        query_embedding = np.asarray(
+            query_embedding, dtype="float32"
+        )
 
-    if index is None or not metadata:
-        return []
+        if query_embedding.ndim == 1:
+            query_embedding = query_embedding.reshape(1, -1)
 
-    query_embedding = create_embeddings([query])
-    query_embedding = np.asarray(query_embedding, dtype="float32")
+        if query_embedding.shape[1] != self.index.d:
+            raise ValueError("Query embedding dimension mismatch.")
 
-    scores, indices = index.search(
-        query_embedding,
-        min(top_k, index.ntotal)
-    )
+        if not np.isfinite(query_embedding).all():
+            raise ValueError("Query embedding contains invalid values.")
 
-    results = []
+        top_k = min(top_k, self.index.ntotal)
 
-    for score, position in zip(scores[0], indices[0]):
-        if position < 0:
-            continue
+        scores, indices = self.index.search(
+            query_embedding, top_k
+        )
 
-        item = metadata[position].copy()
-        item["score"] = float(score)
-        results.append(item)
+        results = []
 
-    return results
+        for score, index in zip(scores[0], indices[0]):
+
+            if index == -1:
+                continue
+
+            results.append({
+                "score": float(score),
+                "chunk": self.chunks[index]
+            })
+
+        return results
+
+    def save(self, directory: str):
+        """
+        Save FAISS index and chunk metadata.
+        """
+
+        if self.index is None:
+            raise ValueError("Nothing to save.")
+
+        path = Path(directory)
+        path.mkdir(parents=True, exist_ok=True)
+
+        faiss.write_index(
+            self.index,
+            str(path / "index.faiss")
+        )
+
+        with open(
+            path / "chunks.json",
+            "w",
+            encoding="utf-8"
+        ) as file:
+
+            json.dump(
+                self.chunks,
+                file,
+                ensure_ascii=False,
+                indent=2
+            )
+
+    def load(self, directory: str):
+        """
+        Load saved FAISS index and chunk metadata.
+        """
+
+        path = Path(directory)
+
+        index_path = path / "index.faiss"
+        chunks_path = path / "chunks.json"
+
+        if not index_path.exists():
+            raise FileNotFoundError("FAISS index not found.")
+
+        if not chunks_path.exists():
+            raise FileNotFoundError("Chunk metadata not found.")
+
+        self.index = faiss.read_index(str(index_path))
+
+        with open(
+            chunks_path,
+            "r",
+            encoding="utf-8"
+        ) as file:
+
+            self.chunks = json.load(file)
+
+        if self.index.ntotal != len(self.chunks):
+            raise ValueError("FAISS index and metadata mismatch.")
+
+        return self
